@@ -2048,6 +2048,21 @@ pub const CAPI = struct {
         surface.occlusionCallback(visible);
     }
 
+    /// Register a callback that receives every chunk of raw bytes read
+    /// from the PTY before Ghostty's terminal emulator parses them. Pass
+    /// `null` for `cb` to clear. The callback is invoked on the termio
+    /// thread; the callee is responsible for any thread hopping it needs.
+    /// The callee must not call back into libghostty from within the
+    /// callback.
+    export fn ghostty_surface_set_data_callback(
+        surface: *Surface,
+        cb: ?*const fn (?*anyopaque, [*]const u8, usize) callconv(.c) void,
+        userdata: ?*anyopaque,
+    ) void {
+        surface.core_surface.pty_data_cb = cb;
+        surface.core_surface.pty_data_cb_userdata = userdata;
+    }
+
     /// Filter the mods if necessary. This handles settings such as
     /// `macos-option-as-alt`. The filtered mods should be used for
     /// key translation but should NOT be sent back via the `_key`
@@ -2126,6 +2141,20 @@ pub const CAPI = struct {
         len: usize,
     ) void {
         surface.pasteText(ptr[0..len :0]);
+    }
+
+    /// Writes raw bytes directly to the surface's PTY, bypassing the
+    /// keyboard/paste pipeline. Intended for embedders that have already
+    /// encoded terminal input (keystrokes, escape sequences, mouse
+    /// reports) and need to deliver it verbatim to the child process.
+    export fn ghostty_surface_send_input_raw(
+        surface: *Surface,
+        ptr: [*]const u8,
+        len: usize,
+    ) void {
+        surface.core_surface.sendInputRaw(ptr[0..len]) catch |err| {
+            std.log.err("error sending raw input to surface err={}", .{err});
+        };
     }
 
     /// Set the preedit text for the surface. This is used for IME
