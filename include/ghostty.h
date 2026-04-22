@@ -1085,6 +1085,12 @@ void ghostty_surface_draw(ghostty_surface_t);
 void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
 void ghostty_surface_set_focus(ghostty_surface_t, bool);
 void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
+typedef void (*ghostty_surface_data_cb)(void* userdata,
+                                        const uint8_t* bytes,
+                                        uintptr_t len);
+void ghostty_surface_set_data_callback(ghostty_surface_t,
+                                       ghostty_surface_data_cb,
+                                       void* userdata);
 void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
 ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
 void ghostty_surface_set_color_scheme(ghostty_surface_t,
@@ -1096,6 +1102,7 @@ bool ghostty_surface_key_is_binding(ghostty_surface_t,
                                     ghostty_input_key_s,
                                     ghostty_binding_flags_e*);
 void ghostty_surface_text(ghostty_surface_t, const char*, uintptr_t);
+void ghostty_surface_send_input_raw(ghostty_surface_t, const uint8_t*, uintptr_t);
 void ghostty_surface_preedit(ghostty_surface_t, const char*, uintptr_t);
 bool ghostty_surface_mouse_captured(ghostty_surface_t);
 bool ghostty_surface_mouse_button(ghostty_surface_t,
