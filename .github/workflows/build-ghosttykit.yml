@@ -1,0 +1,50 @@
+name: Build GhosttyKit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - nexion-mobile-patches
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build xcframework
+        run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=universal -Demit-macos-app=false
+
+      - name: Compress xcframework
+        run: |
+          cd macos
+          tar czf GhosttyKit.xcframework.tar.gz GhosttyKit.xcframework/
+
+      - name: Stage runtime resources
+        run: |
+          mkdir -p resources-stage/ghostty
+          cp -R zig-out/share/ghostty/shell-integration resources-stage/ghostty/
+          cp -R zig-out/share/ghostty/themes resources-stage/ghostty/
+          cp -R zig-out/share/terminfo resources-stage/
+          tar czf GhosttyKit-resources.tar.gz -C resources-stage ghostty terminfo
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="nexion-$(date -u +%Y-%m-%d-%H%M%S)"
+          COMMIT=$(git rev-parse --short HEAD)
+          gh release create "$TAG" \
+            --title "Nexion GhosttyKit $(date -u +%Y-%m-%d)" \
+            --latest \
+            --notes "Built from commit ${COMMIT}. Includes ghostty_surface_set_data_callback + ghostty_surface_send_input_raw for the Nexion mobile companion." \
+            macos/GhosttyKit.xcframework.tar.gz \
+            GhosttyKit-resources.tar.gz
