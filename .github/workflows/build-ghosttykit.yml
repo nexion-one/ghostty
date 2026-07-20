@@ -31,9 +31,13 @@ jobs:
           for sym in ghostty_surface_set_data_callback ghostty_surface_send_input_raw; do
             grep -q "$sym" "$HDR" || { echo "missing $sym in header"; exit 1; }
           done
-          LIB="$(find macos/GhosttyKit.xcframework -name 'libghostty*.a' | head -1)"
-          for sym in _ghostty_surface_set_data_callback _ghostty_surface_send_input_raw; do
-            nm -gU "$LIB" 2>/dev/null | grep -q "$sym" || { echo "missing $sym in static lib"; exit 1; }
+          find macos/GhosttyKit.xcframework -name '*.a' -print -exec file {} \;
+          for LIB in $(find macos/GhosttyKit.xcframework -name '*.a'); do
+            for sym in _ghostty_surface_set_data_callback _ghostty_surface_send_input_raw; do
+              nm -g -arch all "$LIB" 2>/dev/null | grep -q "$sym" \
+                || { echo "missing $sym in $LIB"; exit 1; }
+            done
+            echo "verified: $LIB"
           done
           echo "Nexion C API verified in header and static library."
 
