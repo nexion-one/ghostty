@@ -22,7 +22,7 @@ jobs:
           version: 0.15.2
 
       - name: Build xcframework
-        run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=universal -Demit-macos-app=false
+        run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false
 
       - name: Verify Nexion C API is present
         run: |
@@ -31,11 +31,11 @@ jobs:
           for sym in ghostty_surface_set_data_callback ghostty_surface_send_input_raw; do
             grep -q "$sym" "$HDR" || { echo "missing $sym in header"; exit 1; }
           done
+          plutil -p macos/GhosttyKit.xcframework/Info.plist
           find macos/GhosttyKit.xcframework -name '*.a' -print -exec file {} \;
           for LIB in $(find macos/GhosttyKit.xcframework -name '*.a'); do
             for sym in _ghostty_surface_set_data_callback _ghostty_surface_send_input_raw; do
-              nm -g -arch all "$LIB" 2>/dev/null | grep -q "$sym" \
-                || { echo "missing $sym in $LIB"; exit 1; }
+              nm -g "$LIB" | grep -q "$sym" || { echo "missing $sym in $LIB"; exit 1; }
             done
             echo "verified: $LIB"
           done
