@@ -34,8 +34,11 @@ jobs:
           plutil -p macos/GhosttyKit.xcframework/Info.plist
           find macos/GhosttyKit.xcframework -name '*.a' -print -exec file {} \;
           for LIB in $(find macos/GhosttyKit.xcframework -name '*.a'); do
+            # Dump to a file first: piping nm into `grep -q` makes grep exit
+            # early, nm die on SIGPIPE, and pipefail report a false failure.
+            nm -g "$LIB" > /tmp/syms.txt
             for sym in _ghostty_surface_set_data_callback _ghostty_surface_send_input_raw; do
-              nm -g "$LIB" | grep -q "$sym" || { echo "missing $sym in $LIB"; exit 1; }
+              grep -q "$sym" /tmp/syms.txt || { echo "missing $sym in $LIB"; exit 1; }
             done
             echo "verified: $LIB"
           done
