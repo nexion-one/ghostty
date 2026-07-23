@@ -22,7 +22,7 @@ jobs:
           version: 0.15.2
 
       - name: Build xcframework
-        run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false
+        run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false -Dsentry=false
 
       - name: Verify Nexion C API is present
         run: |
@@ -66,6 +66,6 @@ jobs:
           gh release create "$TAG" \
             --title "Nexion GhosttyKit $(date -u +%Y-%m-%d)" \
             --latest \
-            --notes "Built from commit ${COMMIT}. Includes ghostty_surface_set_data_callback + ghostty_surface_send_input_raw for the Nexion mobile companion." \
+            --notes "Built from commit ${COMMIT}. Includes ghostty_surface_set_data_callback + ghostty_surface_send_input_raw for the Nexion mobile companion. Built with -Dsentry=false: crashes reach the host app (macOS crash reports + Nexion Sentry) instead of being swallowed as exit(1)." \
             macos/GhosttyKit.xcframework.tar.gz \
             GhosttyKit-resources.tar.gz
