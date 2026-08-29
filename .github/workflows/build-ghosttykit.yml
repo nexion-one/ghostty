@@ -1,0 +1,95 @@
+name: Build GhosttyKit
+
+# Builds the xcframework Nexion links against.
+#
+# It runs here and not on a developer's Mac because a local build fails on
+# macOS 26 and later with undefined symbols in build_zcu.o. The runner is
+# pinned to macos-15 for that reason: moving it forward is a deliberate
+# experiment, not a maintenance bump.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - nexion-mobile-patches
+      - nexion-mobile-patches-v2
+      - nexion-mobile-patches-v3
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          # Must match `minimum_zig_version` in build.zig.zon. Upstream moved
+          # from 0.15.2 to 0.16.0 between the v2 base (20 July 2026) and this
+          # one, and the build refuses to start on the older compiler.
+          version: 0.16.0
+
+      - name: Record the base
+        run: |
+          echo "zig: $(zig version)"
+          git log --oneline -1
+
+      - name: Build xcframework
+        run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false -Dsentry=false
+
+      - name: Verify Nexion C API is present
+        run: |
+          set -euo pipefail
+          HDR="$(find macos/GhosttyKit.xcframework -name ghostty.h | head -1)"
+          test -n "$HDR" || { echo "no ghostty.h in the xcframework"; exit 1; }
+          for sym in ghostty_surface_set_data_callback ghostty_surface_send_input_raw; do
+            grep -q "$sym" "$HDR" || { echo "missing $sym in header"; exit 1; }
+          done
+          plutil -p macos/GhosttyKit.xcframework/Info.plist
+          find macos/GhosttyKit.xcframework -name '*.a' -print -exec file {} \;
+          for LIB in $(find macos/GhosttyKit.xcframework -name '*.a'); do
+            # Dump to a file first: piping nm into `grep -q` makes grep exit
+            # early, nm die on SIGPIPE, and pipefail report a false failure.
+            nm -g "$LIB" > /tmp/syms.txt
+            for sym in _ghostty_surface_set_data_callback _ghostty_surface_send_input_raw; do
+              grep -q "$sym" /tmp/syms.txt || { echo "missing $sym in $LIB"; exit 1; }
+            done
+            echo "verified: $LIB"
+          done
+          echo "Nexion C API verified in header and static library."
+
+      - name: Compress xcframework
+        run: |
+          cd macos
+          tar czf GhosttyKit.xcframework.tar.gz GhosttyKit.xcframework/
+
+      - name: Stage runtime resources
+        run: |
+          set -euo pipefail
+          # Fail here rather than shipping an empty tarball: the app reads
+          # these at runtime, and a silently missing shell-integration is a
+          # broken prompt in every pane, discovered days later.
+          for dir in zig-out/share/ghostty/shell-integration zig-out/share/ghostty/themes zig-out/share/terminfo; do
+            test -d "$dir" || { echo "expected build output missing: $dir"; exit 1; }
+          done
+          mkdir -p resources-stage/ghostty
+          cp -R zig-out/share/ghostty/shell-integration resources-stage/ghostty/
+          cp -R zig-out/share/ghostty/themes resources-stage/ghostty/
+          cp -R zig-out/share/terminfo resources-stage/
+          tar czf GhosttyKit-resources.tar.gz -C resources-stage ghostty terminfo
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="nexion-$(date -u +%Y-%m-%d-%H%M%S)"
+          COMMIT=$(git rev-parse --short HEAD)
+          gh release create "$TAG" \
+            --title "Nexion GhosttyKit $(date -u +%Y-%m-%d)" \
+            --latest \
+            --notes "Built from commit ${COMMIT} with $(zig version). Includes ghostty_surface_set_data_callback + ghostty_surface_send_input_raw for the Nexion mobile companion. Built with -Dsentry=false: crashes reach the host app (macOS crash reports + Nexion Sentry) instead of being swallowed as exit(1)." \
+            macos/GhosttyKit.xcframework.tar.gz \
+            GhosttyKit-resources.tar.gz
