@@ -87,7 +87,12 @@ jobs:
         run: |
           TAG="nexion-$(date -u +%Y-%m-%d-%H%M%S)"
           COMMIT=$(git rev-parse --short HEAD)
+          # Anchor the tag to the commit that was built. Without --target,
+          # gh anchors the release at the default branch, so the tag ends up
+          # pointing at whatever main happens to be and the release cannot be
+          # reproduced from its own tag.
           gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
             --title "Nexion GhosttyKit $(date -u +%Y-%m-%d)" \
             --latest \
             --notes "Built from commit ${COMMIT} with $(zig version). Includes ghostty_surface_set_data_callback + ghostty_surface_send_input_raw for the Nexion mobile companion. Built with -Dsentry=false: crashes reach the host app (macOS crash reports + Nexion Sentry) instead of being swallowed as exit(1)." \
