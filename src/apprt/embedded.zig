@@ -1901,6 +1901,44 @@ pub const CAPI = struct {
         return readTextLocked(surface, core_sel, result);
     }
 
+    /// Like `ghostty_surface_read_text`, but the text keeps its colours and
+    /// attributes as VT sequences. Meant for a client that is going to write
+    /// it into a terminal of its own; use the plain one for anything that
+    /// reads the text rather than replays it.
+    export fn ghostty_surface_read_text_styled(
+        surface: *Surface,
+        sel: Selection,
+        result: *Text,
+    ) bool {
+        surface.core_surface.renderer_state.mutex.lockUncancelable(global.io());
+        defer surface.core_surface.renderer_state.mutex.unlock(global.io());
+
+        const core_sel = sel.core(
+            surface.core_surface.renderer_state.terminal.screens.active,
+        ) orelse return false;
+
+        const text = surface.core_surface.dumpTextStyledLocked(
+            global.alloc(),
+            core_sel,
+        ) catch |err| {
+            log.warn("error reading styled text err={}", .{err});
+            return false;
+        };
+
+        // No viewport: this text is for replaying elsewhere, and the offsets
+        // only mean anything to something pointing at this screen.
+        result.* = .{
+            .tl_px_x = -1,
+            .tl_px_y = -1,
+            .offset_start = 0,
+            .offset_len = 0,
+            .text = text.ptr,
+            .text_len = text.len,
+        };
+
+        return true;
+    }
+
     fn readTextLocked(
         surface: *Surface,
         core_sel: terminal.Selection,

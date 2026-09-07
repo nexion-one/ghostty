@@ -1952,6 +1952,40 @@ pub fn dumpText(
     return try self.dumpTextLocked(alloc, sel);
 }
 
+/// Read a region of the screen as text that carries its own styling, as VT
+/// sequences, so it can be written into another terminal and come out looking
+/// the way it looks here.
+///
+/// `dumpText` flattens: it is built on `selectionString`, which is the copy
+/// path, and nobody wants escape codes on the clipboard. This is the other
+/// case, where the text is going to be replayed rather than pasted, and
+/// arriving flat is the loss.
+///
+/// Soft-wrapped rows are joined, as they are for `dumpText`, so whatever
+/// replays this can fold the lines for its own width.
+///
+/// The viewport information `dumpText` computes is not: this is for writing
+/// somewhere else, not for pointing at.
+///
+/// The returned slice is owned by the caller.
+pub fn dumpTextStyledLocked(
+    self: *Surface,
+    alloc: Allocator,
+    sel: terminal.Selection,
+) ![:0]const u8 {
+    var out: std.Io.Writer.Allocating = .init(alloc);
+    defer out.deinit();
+
+    var formatter: terminal.formatter.ScreenFormatter = .init(
+        self.io.terminal.screens.active,
+        .{ .emit = .vt, .unwrap = true, .trim = false },
+    );
+    formatter.content = .{ .selection = sel };
+    try formatter.format(&out.writer);
+
+    return try alloc.dupeZ(u8, out.written());
+}
+
 /// Same as `dumpText` but assumes the renderer state mutex is already
 /// held.
 pub fn dumpTextLocked(
