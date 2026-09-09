@@ -14,6 +14,7 @@ on:
       - nexion-mobile-patches
       - nexion-mobile-patches-v2
       - nexion-mobile-patches-v3
+      - nexion-mobile-patches-v4
 
 jobs:
   build:
