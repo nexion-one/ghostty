@@ -1901,6 +1901,29 @@ pub const CAPI = struct {
         return readTextLocked(surface, core_sel, result);
     }
 
+    /// Where the cursor is in the active area, zero-based, column then row.
+    ///
+    /// A client that has been handed the screen as text rather than as output
+    /// has no way to know this, and it matters: everything the program moves
+    /// relative to the cursor afterwards is measured from wherever the client
+    /// happened to leave it. A shell redrawing a multi-row prompt walks up by
+    /// a fixed count, so a cursor one row out paints the redraw over content
+    /// that should have stayed.
+    export fn ghostty_surface_cursor(
+        surface: *Surface,
+        out_x: *u16,
+        out_y: *u16,
+    ) bool {
+        surface.core_surface.renderer_state.mutex.lockUncancelable(global.io());
+        defer surface.core_surface.renderer_state.mutex.unlock(global.io());
+
+        const screen: *terminal.Screen =
+            surface.core_surface.renderer_state.terminal.screens.active;
+        out_x.* = @intCast(screen.cursor.x);
+        out_y.* = @intCast(screen.cursor.y);
+        return true;
+    }
+
     /// Like `ghostty_surface_read_text`, but the text keeps its colours and
     /// attributes as VT sequences. Meant for a client that is going to write
     /// it into a terminal of its own; use the plain one for anything that

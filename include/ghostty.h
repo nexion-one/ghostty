@@ -1237,6 +1237,9 @@ GHOSTTY_API bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_
 GHOSTTY_API bool ghostty_surface_read_text(ghostty_surface_t,
                                               ghostty_selection_s,
                                               ghostty_text_s*);
+GHOSTTY_API bool ghostty_surface_cursor(ghostty_surface_t,
+                                        uint16_t*,
+                                        uint16_t*);
 GHOSTTY_API bool ghostty_surface_read_text_styled(ghostty_surface_t,
                                                      ghostty_selection_s,
                                                      ghostty_text_s*);
