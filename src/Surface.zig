@@ -2078,7 +2078,7 @@ pub fn dumpTextStyledLocked(
     formatter.content = .{ .selection = sel };
     try formatter.format(&out.writer);
 
-    return try alloc.dupeZ(u8, out.written());
+    return try alloc.dupeSentinel(u8, out.written(), 0);
 }
 
 /// Same as `dumpText` but assumes the renderer state mutex is already

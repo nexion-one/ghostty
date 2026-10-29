@@ -15,6 +15,7 @@ on:
       - nexion-mobile-patches-v2
       - nexion-mobile-patches-v3
       - nexion-mobile-patches-v4
+      - nexion-mobile-patches-v5
 
 jobs:
   build:
@@ -29,9 +30,10 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           # Must match `minimum_zig_version` in build.zig.zon. Upstream moved
-          # from 0.15.2 to 0.16.0 between the v2 base (20 July 2026) and this
-          # one, and the build refuses to start on the older compiler.
-          version: 0.16.0
+          # from 0.15.2 to 0.16.0 after the v2 base (20 July 2026), and to
+          # 0.17.0 for v1.4.0 (the v5 base); the build refuses to start on an
+          # older compiler.
+          version: 0.17.0
 
       - name: Record the base
         run: |
