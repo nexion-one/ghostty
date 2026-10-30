@@ -727,6 +727,13 @@ typedef struct {
   const char* pwd;
 } ghostty_action_pwd_s;
 
+// apprt.action.ProgramStatus.C
+// An OSC 7501 report body: `key=value` pairs separated by colons, already
+// validated (state present, size limits kept). Valid only during the call.
+typedef struct {
+  const char* data;
+} ghostty_action_program_status_s;
+
 // apprt.action.OpenConfig
 typedef enum {
   // Open the config in the OS default editor.
@@ -1016,6 +1023,7 @@ typedef enum {
   GHOSTTY_ACTION_COPY_TITLE_TO_CLIPBOARD,
   GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW,
   GHOSTTY_ACTION_RESIZE_WINDOW,
+  GHOSTTY_ACTION_PROGRAM_STATUS,
 } ghostty_action_tag_e;
 
 typedef union {
@@ -1060,6 +1068,7 @@ typedef union {
   ghostty_action_search_selected_s search_selected;
   ghostty_action_readonly_e readonly;
   ghostty_action_open_config_e open_config;
+  ghostty_action_program_status_s program_status;
 } ghostty_action_u;
 
 typedef struct {

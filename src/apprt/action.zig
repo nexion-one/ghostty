@@ -326,6 +326,11 @@ pub const Action = union(Key) {
     /// Show a native GUI notification about the progress of some TUI operation.
     progress_report: terminal.osc.Command.ProgressReport,
 
+    /// A program reported its status with OSC 7501 (the Program Status
+    /// Protocol). Carries the report body, everything after `7501;`, as
+    /// validated by the parser. The apprt reads the `key=value` pairs.
+    program_status: ProgramStatus,
+
     /// Show the on-screen keyboard.
     show_on_screen_keyboard,
 
@@ -436,6 +441,7 @@ pub const Action = union(Key) {
         copy_title_to_clipboard,
         move_tab_to_new_window,
         resize_window,
+        program_status,
 
         test "ghostty.h Action.Key" {
             try lib.checkGhosttyHEnum(Key, "GHOSTTY_ACTION_");
@@ -771,6 +777,30 @@ pub const SetTitle = struct {
         writer: *std.Io.Writer,
     ) !void {
         try writer.print("{s}{{ {s} }}", .{ @typeName(@This()), value.title });
+    }
+};
+
+pub const ProgramStatus = struct {
+    data: [:0]const u8,
+
+    // Sync with: ghostty_action_program_status_s
+    pub const C = extern struct {
+        data: [*:0]const u8,
+    };
+
+    pub fn cval(self: ProgramStatus) C {
+        return .{
+            .data = self.data.ptr,
+        };
+    }
+
+    pub fn format(
+        value: @This(),
+        comptime _: []const u8,
+        _: std.fmt.Options,
+        writer: *std.Io.Writer,
+    ) !void {
+        try writer.print("{s}{{ {s} }}", .{ @typeName(@This()), value.data });
     }
 };
 

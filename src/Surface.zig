@@ -1186,6 +1186,24 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
             };
         },
 
+        .program_status => |w| {
+            defer w.deinit();
+
+            var stack_buf: [512]u8 = undefined;
+            var stack: std.heap.BufferFirstAllocator = .init(&stack_buf, self.alloc);
+            const alloc = stack.allocator();
+            const str = try alloc.dupeSentinel(u8, w.slice(), 0);
+            defer alloc.free(str);
+
+            _ = self.rt_app.performAction(
+                .{ .surface = self },
+                .program_status,
+                .{ .data = str },
+            ) catch |err| {
+                log.warn("apprt failed to report program status err={}", .{err});
+            };
+        },
+
         .progress_report => |v| {
             _ = self.rt_app.performAction(
                 .{ .surface = self },

@@ -48,7 +48,7 @@ jobs:
           set -euo pipefail
           HDR="$(find macos/GhosttyKit.xcframework -name ghostty.h | head -1)"
           test -n "$HDR" || { echo "no ghostty.h in the xcframework"; exit 1; }
-          for sym in ghostty_surface_set_data_callback ghostty_surface_send_input_raw; do
+          for sym in ghostty_surface_set_data_callback ghostty_surface_send_input_raw GHOSTTY_ACTION_PROGRAM_STATUS ghostty_action_program_status_s; do
             grep -q "$sym" "$HDR" || { echo "missing $sym in header"; exit 1; }
           done
           plutil -p macos/GhosttyKit.xcframework/Info.plist
