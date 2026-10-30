@@ -326,11 +326,6 @@ pub const Action = union(Key) {
     /// Show a native GUI notification about the progress of some TUI operation.
     progress_report: terminal.osc.Command.ProgressReport,
 
-    /// A program reported its status with OSC 7501 (the Program Status
-    /// Protocol). Carries the report body, everything after `7501;`, as
-    /// validated by the parser. The apprt reads the `key=value` pairs.
-    program_status: ProgramStatus,
-
     /// Show the on-screen keyboard.
     show_on_screen_keyboard,
 
@@ -368,6 +363,12 @@ pub const Action = union(Key) {
     /// and apprts may ignore it, for example if the surface is in a
     /// split or the window is fullscreen.
     resize_window: ResizeWindow,
+
+    /// A program reported its status with OSC 7501 (the Program Status
+    /// Protocol). Carries the report body, everything after `7501;`, as
+    /// validated by the parser. The apprt reads the `key=value` pairs.
+    /// Last, with its key last in `Key`: the field order must match.
+    program_status: ProgramStatus,
 
     /// Sync with: ghostty_action_tag_e
     pub const Key = enum(c_int) {
