@@ -1968,6 +1968,58 @@ pub const CAPI = struct {
     /// attributes as VT sequences. Meant for a client that is going to write
     /// it into a terminal of its own; use the plain one for anything that
     /// reads the text rather than replays it.
+    /// Like `ghostty_surface_set_data_callback`, but each chunk also
+    /// carries its offset in the PTY byte stream, so it can be lined up
+    /// with `ghostty_surface_snapshot_vt`. Pass `null` for `cb` to clear.
+    export fn ghostty_surface_set_data_offset_callback(
+        surface: *Surface,
+        cb: ?*const fn (?*anyopaque, [*]const u8, usize, u64) callconv(.c) void,
+        userdata: ?*anyopaque,
+    ) void {
+        surface.core_surface.pty_data_offset_cb = cb;
+        surface.core_surface.pty_data_offset_cb_userdata = userdata;
+    }
+
+    /// A VT snapshot of the terminal for a client that mirrors it: the last
+    /// `history_rows` rows of history and the active area with styles, then
+    /// modes, scrolling region, tabstops and cursor (see
+    /// `Surface.snapshotVtLocked`). `parsed` is the PTY stream offset it
+    /// reflects: replay it, then only the chunks from the offset callback at
+    /// or past that offset. `cols`/`rows` is the grid it was taken at.
+    /// Free `result` with `ghostty_surface_free_text`.
+    export fn ghostty_surface_snapshot_vt(
+        surface: *Surface,
+        history_rows: u32,
+        result: *Text,
+        parsed: *u64,
+        cols: *u16,
+        rows: *u16,
+    ) bool {
+        surface.core_surface.renderer_state.mutex.lockUncancelable(global.io());
+        defer surface.core_surface.renderer_state.mutex.unlock(global.io());
+
+        const snap = surface.core_surface.snapshotVtLocked(
+            global.alloc(),
+            history_rows,
+        ) catch |err| {
+            log.warn("error taking vt snapshot err={}", .{err});
+            return false;
+        };
+
+        result.* = .{
+            .tl_px_x = -1,
+            .tl_px_y = -1,
+            .offset_start = 0,
+            .offset_len = 0,
+            .text = snap.text.ptr,
+            .text_len = snap.text.len,
+        };
+        parsed.* = snap.parsed;
+        cols.* = snap.cols;
+        rows.* = snap.rows;
+        return true;
+    }
+
     export fn ghostty_surface_read_text_styled(
         surface: *Surface,
         sel: Selection,

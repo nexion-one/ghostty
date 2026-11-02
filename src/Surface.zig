@@ -88,6 +88,14 @@ rt_surface: *apprt.runtime.Surface,
 pty_data_cb: ?*const fn (?*anyopaque, [*]const u8, usize) callconv(.c) void = null,
 pty_data_cb_userdata: ?*anyopaque = null,
 
+/// Like `pty_data_cb`, with the chunk's offset in the PTY byte stream
+/// (`Termio.pty_bytes_read` before the chunk). An embedder that mirrors the
+/// terminal pairs it with `snapshotVtLocked`: after replaying a snapshot it
+/// applies only the chunks at or past the snapshot's `parsed` offset. Same
+/// thread and reentrancy rules as `pty_data_cb`.
+pty_data_offset_cb: ?*const fn (?*anyopaque, [*]const u8, usize, u64) callconv(.c) void = null,
+pty_data_offset_cb_userdata: ?*anyopaque = null,
+
 /// The font structures
 font_grid_key: font.SharedGridSet.Key,
 font_size: font.face.DesiredSize,
@@ -2097,6 +2105,55 @@ pub fn dumpTextStyledLocked(
     try formatter.format(&out.writer);
 
     return try alloc.dupeSentinel(u8, out.written(), 0);
+}
+
+/// What it takes to show this terminal somewhere else exactly as it is now,
+/// and carry on from the live byte stream (see `snapshotVtLocked`).
+pub const VtSnapshot = struct {
+    /// VT sequences that rebuild the active screen: the last rows of history
+    /// and the whole active area with their styles, then the modes, scrolling
+    /// region, tabstops, cursor position and pen. Owned by the caller.
+    text: [:0]const u8,
+    /// PTY bytes the snapshot already reflects (`Termio.pty_bytes_parsed`).
+    parsed: u64,
+    /// The grid it was taken at. Only a terminal of exactly this size
+    /// replays it faithfully: the rows are written as rows.
+    cols: u16,
+    rows: u16,
+};
+
+/// A snapshot of the terminal as VT, for a client that mirrors it.
+///
+/// Replaying raw output only works into a terminal that is in the state the
+/// output was written for, and a client that attaches late never is: a
+/// shell redrawing its prompt walks the cursor up a number of rows counted
+/// here, and on a client whose rows fold differently it lands somewhere
+/// else and stays wrong. This hands over the state itself, through the
+/// formatter that already reconstructs a terminal "as closely as possible"
+/// (`TerminalFormatter.Extra.all`), the way tmux and mosh hand a client the
+/// screen rather than the bytes.
+///
+/// The palette is left out: a client keeps its own colours.
+///
+/// Must be called with the renderer state mutex held, which is also what
+/// makes `parsed` exact: the parser advances it under the same lock.
+pub fn snapshotVtLocked(
+    self: *Surface,
+    alloc: Allocator,
+    history_rows: usize,
+) !VtSnapshot {
+    const t = &self.io.terminal;
+
+    var out: std.Io.Writer.Allocating = .init(alloc);
+    defer out.deinit();
+    try terminal.formatter.snapshotVt(&out.writer, t, history_rows);
+
+    return .{
+        .text = try alloc.dupeSentinel(u8, out.written(), 0),
+        .parsed = self.io.pty_bytes_parsed,
+        .cols = @intCast(t.cols),
+        .rows = @intCast(t.rows),
+    };
 }
 
 /// Same as `dumpText` but assumes the renderer state mutex is already

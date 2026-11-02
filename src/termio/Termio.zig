@@ -69,6 +69,18 @@ terminal_stream: StreamHandler.Stream,
 /// flooding with cursor resets.
 last_cursor_reset: ?std.Io.Timestamp = null,
 
+/// Where the PTY byte stream has got to, for an embedder mirroring it.
+///
+/// `pty_bytes_read` is the offset of the next chunk handed to the offset
+/// data callback; only the termio thread touches it. `pty_bytes_parsed`
+/// advances under the renderer mutex together with the terminal state it
+/// produced, so a VT snapshot taken under that mutex knows exactly which
+/// bytes it already reflects (`Surface.snapshotVtLocked`): a client replaying
+/// the snapshot then applies only chunks at or past that offset, and neither
+/// misses nor repeats a byte.
+pty_bytes_read: u64 = 0,
+pty_bytes_parsed: u64 = 0,
+
 /// State we have for thread enter. This may be null if we don't need
 /// to keep track of any state or if its already been freed.
 thread_enter_state: ?*ThreadEnterState = null,
@@ -703,11 +715,17 @@ pub fn focusGained(self: *Termio, td: *ThreadData, focused: bool) !void {
 /// call with pty data but it is also called by the read thread when using
 /// an exec subprocess.
 pub fn processOutput(self: *Termio, buf: []const u8) void {
+    const offset = self.pty_bytes_read;
+    self.pty_bytes_read += buf.len;
+
     // Tee the raw PTY bytes to any registered embedder callback before
     // parsing. This is used by the embedded apprt C API to mirror the
     // byte stream to external consumers (e.g. remote terminal clients).
     if (self.surface_mailbox.surface.pty_data_cb) |cb| {
         cb(self.surface_mailbox.surface.pty_data_cb_userdata, buf.ptr, buf.len);
+    }
+    if (self.surface_mailbox.surface.pty_data_offset_cb) |cb| {
+        cb(self.surface_mailbox.surface.pty_data_offset_cb_userdata, buf.ptr, buf.len, offset);
     }
 
     // We are modifying terminal state from here on out and we need
@@ -715,6 +733,8 @@ pub fn processOutput(self: *Termio, buf: []const u8) void {
     self.renderer_state.mutex.lockUncancelable(global.io());
     defer self.renderer_state.mutex.unlock(global.io());
     self.processOutputLocked(buf);
+    // Under the same lock as the state it produced (see pty_bytes_parsed).
+    self.pty_bytes_parsed += buf.len;
 }
 
 /// Process output from readdata but the lock is already held.

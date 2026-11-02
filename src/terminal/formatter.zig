@@ -568,6 +568,36 @@ pub const TerminalFormatter = struct {
     }
 };
 
+/// A VT snapshot of `terminal` for a client that mirrors it (Nexion).
+///
+/// The last `history_rows` rows of history and the whole active area,
+/// unwritten rows included (they are part of the layout), written as rows
+/// (no unwrapping: the client has the same grid), followed by everything
+/// `TerminalFormatter.Extra.all` restores except the palette, which a
+/// client keeps its own of. Replayed into a fresh terminal of the same size,
+/// it gives the same screen, cursor and modes, so the bytes that follow
+/// land where they land here.
+pub fn snapshotVt(
+    writer: *std.Io.Writer,
+    terminal: *const Terminal,
+    history_rows: usize,
+) !void {
+    const pages = &terminal.screens.active.pages;
+    const top = pages.getTopLeft(.active).up(history_rows) orelse
+        pages.getTopLeft(.screen);
+    const bottom = pages.getBottomRight(.active) orelse
+        return error.NoActiveArea;
+
+    var formatter: TerminalFormatter = .init(
+        terminal,
+        .{ .emit = .vt, .unwrap = false, .trim = false },
+    );
+    formatter.content = .{ .selection = Selection.init(top, bottom, false) };
+    formatter.extra = .all;
+    formatter.extra.palette = false;
+    try formatter.format(writer);
+}
+
 /// Screen formatter formats a single terminal screen (e.g. primary vs alt).
 pub const ScreenFormatter = struct {
     /// The screen to format.
@@ -8200,4 +8230,124 @@ test "Page HTML hyperlink point map maps closing to previous cell" {
     for (closing_idx..closing_idx + "</a>".len) |i| {
         try testing.expectEqual(expected_coord, point_map.items[i]);
     }
+}
+
+// Nexion: a snapshot replays to the same terminal, and the bytes that follow
+// it land in the same place. This is what a late-attaching mirror needs.
+
+fn expectSameScreen(a: *const Terminal, b: *const Terminal) !void {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const sa = try a.screens.active.dumpStringAlloc(alloc, .{ .active = .{} });
+    defer alloc.free(sa);
+    const sb = try b.screens.active.dumpStringAlloc(alloc, .{ .active = .{} });
+    defer alloc.free(sb);
+    try testing.expectEqualStrings(sa, sb);
+    try testing.expectEqual(a.screens.active.cursor.x, b.screens.active.cursor.x);
+    try testing.expectEqual(a.screens.active.cursor.y, b.screens.active.cursor.y);
+    try testing.expectEqual(a.screens.active.cursor.pending_wrap, b.screens.active.cursor.pending_wrap);
+}
+
+fn replaySnapshot(source: *const Terminal, target: *Terminal, history_rows: usize) !void {
+    const alloc = std.testing.allocator;
+    var builder: std.Io.Writer.Allocating = .init(alloc);
+    defer builder.deinit();
+    try snapshotVt(&builder.writer, source, history_rows);
+    var stream = target.vtStream();
+    defer stream.deinit();
+    stream.nextSlice(builder.writer.buffered());
+}
+
+test "snapshotVt replays the screen and later relative moves land the same" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+
+    var source = try Terminal.init(io, alloc, .{ .cols = 10, .rows = 5 });
+    defer source.deinit(alloc);
+    var s = source.vtStream();
+    defer s.deinit();
+    // History, then a prompt line long enough to wrap, then the cursor
+    // in the middle of the last line, as a shell leaves it.
+    s.nextSlice("1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n");
+    s.nextSlice("\x1b[32mspikeproj main on cloud\x1b[0m\r\n12:00 > ab");
+
+    var target = try Terminal.init(io, alloc, .{ .cols = 10, .rows = 5 });
+    defer target.deinit(alloc);
+    try replaySnapshot(&source, &target, 100);
+    try expectSameScreen(&source, &target);
+
+    // What a shell does to redraw its line: walk up, return, rewrite.
+    const redraw = "\x1b[A\x1b[A\r\x1b[Jspikeproj main on cloud\r\n12:01 > abc";
+    s.nextSlice(redraw);
+    var t = target.vtStream();
+    defer t.deinit();
+    t.nextSlice(redraw);
+    try expectSameScreen(&source, &target);
+}
+
+test "snapshotVt restores the alternate screen and its modes" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+
+    var source = try Terminal.init(io, alloc, .{ .cols = 20, .rows = 4 });
+    defer source.deinit(alloc);
+    var s = source.vtStream();
+    defer s.deinit();
+    s.nextSlice("shell line\r\n");
+    s.nextSlice("\x1b[?1049h\x1b[?1h\x1b[?2004h\x1b[2;3Hvim");
+
+    var target = try Terminal.init(io, alloc, .{ .cols = 20, .rows = 4 });
+    defer target.deinit(alloc);
+    try replaySnapshot(&source, &target, 100);
+
+    try testing.expectEqual(source.screens.active_key, target.screens.active_key);
+    try testing.expect(target.modes.get(.cursor_keys));
+    try testing.expect(target.modes.get(.bracketed_paste));
+    try expectSameScreen(&source, &target);
+}
+
+test "snapshotVt keeps a pending wrap at the right edge" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+
+    var source = try Terminal.init(io, alloc, .{ .cols = 5, .rows = 3 });
+    defer source.deinit(alloc);
+    var s = source.vtStream();
+    defer s.deinit();
+    s.nextSlice("abcde");
+    try testing.expect(source.screens.active.cursor.pending_wrap);
+
+    var target = try Terminal.init(io, alloc, .{ .cols = 5, .rows = 3 });
+    defer target.deinit(alloc);
+    try replaySnapshot(&source, &target, 100);
+    try expectSameScreen(&source, &target);
+
+    // The next character wraps on both.
+    s.nextSlice("f");
+    var t = target.vtStream();
+    defer t.deinit();
+    t.nextSlice("f");
+    try expectSameScreen(&source, &target);
+}
+
+test "snapshotVt sends no more history than asked" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const io = testing.io;
+
+    var source = try Terminal.init(io, alloc, .{ .cols = 10, .rows = 3 });
+    defer source.deinit(alloc);
+    var s = source.vtStream();
+    defer s.deinit();
+    s.nextSlice("h1\r\nh2\r\nh3\r\nh4\r\na\r\nb\r\nc");
+
+    var builder: std.Io.Writer.Allocating = .init(alloc);
+    defer builder.deinit();
+    try snapshotVt(&builder.writer, &source, 1);
+    const out = builder.writer.buffered();
+    try testing.expect(std.mem.indexOf(u8, out, "h4") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "h3") == null);
 }

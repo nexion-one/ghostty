@@ -1204,6 +1204,13 @@ typedef void (*ghostty_surface_data_cb)(void* userdata,
 GHOSTTY_API void ghostty_surface_set_data_callback(ghostty_surface_t,
                                                       ghostty_surface_data_cb,
                                                       void* userdata);
+typedef void (*ghostty_surface_data_offset_cb)(void* userdata,
+                                               const uint8_t* bytes,
+                                               uintptr_t len,
+                                               uint64_t offset);
+GHOSTTY_API void ghostty_surface_set_data_offset_callback(ghostty_surface_t,
+                                                             ghostty_surface_data_offset_cb,
+                                                             void* userdata);
 GHOSTTY_API void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
 GHOSTTY_API ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
 GHOSTTY_API uint64_t ghostty_surface_foreground_pid(ghostty_surface_t);
@@ -1261,6 +1268,12 @@ GHOSTTY_API bool ghostty_surface_cursor(ghostty_surface_t,
 GHOSTTY_API bool ghostty_surface_read_text_styled(ghostty_surface_t,
                                                      ghostty_selection_s,
                                                      ghostty_text_s*);
+GHOSTTY_API bool ghostty_surface_snapshot_vt(ghostty_surface_t,
+                                                uint32_t,
+                                                ghostty_text_s*,
+                                                uint64_t*,
+                                                uint16_t*,
+                                                uint16_t*);
 GHOSTTY_API void ghostty_surface_free_text(ghostty_surface_t, ghostty_text_s*);
 
 #ifdef __APPLE__
