@@ -16,6 +16,7 @@ on:
       - nexion-mobile-patches-v3
       - nexion-mobile-patches-v4
       - nexion-mobile-patches-v5
+      - nexion-mobile-patches-v6
 
 jobs:
   build:
@@ -40,6 +41,12 @@ jobs:
           echo "zig: $(zig version)"
           git log --oneline -1
 
+      - name: Test the VT snapshot (Nexion)
+        # The mobile mirror attaches through formatter.snapshotVt: a replay
+        # that is wrong is a phone whose prompt draws over itself. These
+        # tests replay snapshots into a fresh terminal and compare.
+        run: zig build test-lib-vt -Dtest-filter=snapshotVt
+
       - name: Build xcframework
         run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false -Dsentry=false
 
@@ -48,7 +55,7 @@ jobs:
           set -euo pipefail
           HDR="$(find macos/GhosttyKit.xcframework -name ghostty.h | head -1)"
           test -n "$HDR" || { echo "no ghostty.h in the xcframework"; exit 1; }
-          for sym in ghostty_surface_set_data_callback ghostty_surface_send_input_raw GHOSTTY_ACTION_PROGRAM_STATUS ghostty_action_program_status_s; do
+          for sym in ghostty_surface_set_data_callback ghostty_surface_send_input_raw GHOSTTY_ACTION_PROGRAM_STATUS ghostty_action_program_status_s ghostty_surface_set_data_offset_callback ghostty_surface_snapshot_vt; do
             grep -q "$sym" "$HDR" || { echo "missing $sym in header"; exit 1; }
           done
           plutil -p macos/GhosttyKit.xcframework/Info.plist
@@ -57,7 +64,7 @@ jobs:
             # Dump to a file first: piping nm into `grep -q` makes grep exit
             # early, nm die on SIGPIPE, and pipefail report a false failure.
             nm -g "$LIB" > /tmp/syms.txt
-            for sym in _ghostty_surface_set_data_callback _ghostty_surface_send_input_raw; do
+            for sym in _ghostty_surface_set_data_callback _ghostty_surface_send_input_raw _ghostty_surface_set_data_offset_callback _ghostty_surface_snapshot_vt; do
               grep -q "$sym" /tmp/syms.txt || { echo "missing $sym in $LIB"; exit 1; }
             done
             echo "verified: $LIB"
@@ -98,6 +105,6 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Nexion GhosttyKit $(date -u +%Y-%m-%d)" \
             --latest \
-            --notes "Built from commit ${COMMIT} with $(zig version). Includes ghostty_surface_set_data_callback + ghostty_surface_send_input_raw for the Nexion mobile companion. Built with -Dsentry=false: crashes reach the host app (macOS crash reports + Nexion Sentry) instead of being swallowed as exit(1)." \
+            --notes "Built from commit ${COMMIT} with $(zig version). Includes ghostty_surface_set_data_callback (+ the offset variant), ghostty_surface_send_input_raw and ghostty_surface_snapshot_vt for the Nexion mobile companion. Built with -Dsentry=false: crashes reach the host app (macOS crash reports + Nexion Sentry) instead of being swallowed as exit(1)." \
             macos/GhosttyKit.xcframework.tar.gz \
             GhosttyKit-resources.tar.gz
