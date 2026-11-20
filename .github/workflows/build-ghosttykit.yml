@@ -115,8 +115,7 @@ jobs:
           # reproduced from its own tag.
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
-            --title "Nexion GhosttyKit $(date -u +%Y-%m-%d)" \
-            --latest \
+            --title "Nexion canvas GhosttyKit $(date -u +%Y-%m-%d)" \
             --notes "Built from commit ${COMMIT} with $(zig version). Includes ghostty_surface_set_data_callback (+ the offset variant), ghostty_surface_send_input_raw and ghostty_surface_snapshot_vt for the Nexion mobile companion. Built with -Dsentry=false: crashes reach the host app (macOS crash reports + Nexion Sentry) instead of being swallowed as exit(1)." \
             macos/GhosttyKit.xcframework.tar.gz \
             GhosttyVt.xcframework.tar.gz \
