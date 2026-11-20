@@ -52,15 +52,26 @@ jobs:
         run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false -Dsentry=false
 
       - name: Build libghostty-vt xcframework (Nexion terminal canvas)
+        # A dynamic library, not the static xcframework: linked next to
+        # GhosttyKit's libghostty-internal.a, the static vt archive duplicates
+        # 35 symbols (compiler-rt, ubsan handlers, memset). The dylib exports
+        # only _ghostty_* and keeps its own copies private.
         run: |
           set -euo pipefail
-          zig build -Doptimize=ReleaseFast -Demit-lib-vt -Demit-xcframework=true
-          test -d zig-out/lib/ghostty-vt.xcframework || { echo "no ghostty-vt.xcframework in zig-out/lib"; exit 1; }
-          find zig-out/lib/ghostty-vt.xcframework -maxdepth 2
-          grep -rq ghostty_render_state_new zig-out/lib/ghostty-vt.xcframework || { echo "render state API missing"; exit 1; }
-          cd zig-out/lib
-          # The framework directory keeps its name; Nexion's script installs it as GhosttyVt.xcframework.
-          tar czf "$GITHUB_WORKSPACE/GhosttyVt.xcframework.tar.gz" ghostty-vt.xcframework/
+          zig build -Doptimize=ReleaseFast -Demit-lib-vt
+          DYLIB="$(find zig-out/lib -maxdepth 1 -name 'libghostty-vt.*.*.*.dylib' | head -1)"
+          test -n "$DYLIB" || { echo "no libghostty-vt dylib in zig-out/lib"; ls -la zig-out/lib; exit 1; }
+          test -f zig-out/include/ghostty/vt/render.h || { echo "no render.h in zig-out/include"; exit 1; }
+          grep -q ghostty_render_state_new zig-out/include/ghostty/vt/render.h || { echo "render state API missing"; exit 1; }
+          mkdir -p vt-stage/headers
+          cp "$DYLIB" vt-stage/libghostty-vt.dylib
+          cp -R zig-out/include/ghostty vt-stage/headers/ghostty
+          # zig-out/include also holds GhosttyKit's module map; this one is vt's alone.
+          printf 'module GhosttyVt {\n    umbrella header "ghostty/vt.h"\n    export *\n}\n' > vt-stage/headers/module.modulemap
+          otool -D vt-stage/libghostty-vt.dylib
+          xcodebuild -create-xcframework -library vt-stage/libghostty-vt.dylib -headers vt-stage/headers -output GhosttyVt.xcframework
+          find GhosttyVt.xcframework -maxdepth 3
+          tar czf GhosttyVt.xcframework.tar.gz GhosttyVt.xcframework/
 
       - name: Verify Nexion C API is present
         run: |
