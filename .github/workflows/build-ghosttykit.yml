@@ -17,6 +17,7 @@ on:
       - nexion-mobile-patches-v4
       - nexion-mobile-patches-v5
       - nexion-mobile-patches-v6
+      - nexion-terminal-canvas
 
 jobs:
   build:
@@ -49,6 +50,17 @@ jobs:
 
       - name: Build xcframework
         run: zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-macos-app=false -Dsentry=false
+
+      - name: Build libghostty-vt xcframework (Nexion terminal canvas)
+        run: |
+          set -euo pipefail
+          zig build -Doptimize=ReleaseFast -Demit-lib-vt -Demit-xcframework=true
+          test -d zig-out/lib/ghostty-vt.xcframework || { echo "no ghostty-vt.xcframework in zig-out/lib"; exit 1; }
+          find zig-out/lib/ghostty-vt.xcframework -maxdepth 2
+          grep -rq ghostty_render_state_new zig-out/lib/ghostty-vt.xcframework || { echo "render state API missing"; exit 1; }
+          cd zig-out/lib
+          # The framework directory keeps its name; Nexion's script installs it as GhosttyVt.xcframework.
+          tar czf "$GITHUB_WORKSPACE/GhosttyVt.xcframework.tar.gz" ghostty-vt.xcframework/
 
       - name: Verify Nexion C API is present
         run: |
@@ -95,7 +107,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="nexion-$(date -u +%Y-%m-%d-%H%M%S)"
+          TAG="nexion-canvas-$(date -u +%Y-%m-%d-%H%M%S)"
           COMMIT=$(git rev-parse --short HEAD)
           # Anchor the tag to the commit that was built. Without --target,
           # gh anchors the release at the default branch, so the tag ends up
@@ -107,4 +119,5 @@ jobs:
             --latest \
             --notes "Built from commit ${COMMIT} with $(zig version). Includes ghostty_surface_set_data_callback (+ the offset variant), ghostty_surface_send_input_raw and ghostty_surface_snapshot_vt for the Nexion mobile companion. Built with -Dsentry=false: crashes reach the host app (macOS crash reports + Nexion Sentry) instead of being swallowed as exit(1)." \
             macos/GhosttyKit.xcframework.tar.gz \
+            GhosttyVt.xcframework.tar.gz \
             GhosttyKit-resources.tar.gz
